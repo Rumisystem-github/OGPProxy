@@ -4,7 +4,10 @@ import static su.rumishistem.rumi_java_lib.LOG_PRINT.Main.LOG;
 
 import java.io.File;
 import java.io.IOException;
+import java.net.InetAddress;
+import java.net.URL;
 import java.net.URLDecoder;
+import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -61,13 +64,17 @@ public class Main {
 				}
 
 				try {
-					String URL = URLDecoder.decode(r.GetEVENT().getURI_PARAM().get("URL"));
-					JsonNode Data = Getter.Get(URL);
+					String url = URLDecoder.decode(r.GetEVENT().getURI_PARAM().get("URL"));
+					if (check_url(new URL(url))) {
+						JsonNode Data = Getter.Get(url);
 
-					LinkedHashMap<String, Object> Return = new LinkedHashMap<String, Object>();
-					Return.put("STATUS", true);
-					Return.put("DATA", Data);
-					return new HTTP_RESULT(200, new ObjectMapper().writeValueAsString(Return).getBytes(), "application/json; charset=UTF-8");
+						LinkedHashMap<String, Object> Return = new LinkedHashMap<String, Object>();
+						Return.put("STATUS", true);
+						Return.put("DATA", Data);
+						return new HTTP_RESULT(200, new ObjectMapper().writeValueAsString(Return).getBytes(), "application/json; charset=UTF-8");
+					} else {
+						return new HTTP_RESULT(400, "{\"STATUS\": false}".getBytes(), "application/json; charset=UTF-8");
+					}
 				} catch (Exception EX) {
 					EX.printStackTrace();
 					return new HTTP_RESULT(500, "{\"STATUS\": false}".getBytes(), "application/json; charset=UTF-8");
@@ -76,5 +83,27 @@ public class Main {
 		});
 
 		SH.Start();
+	}
+
+	private static boolean check_url(URL url) {
+		try {
+			String host = url.getHost();
+
+			//localhost→ダメ
+			if (host.equalsIgnoreCase("localhost")) return false;
+
+			//宛先がプライベートIP→ダメ
+			InetAddress address = InetAddress.getByName(host);
+			if (address.isAnyLocalAddress()) return false;
+			if (address.isLoopbackAddress()) return false;
+			if (address.isSiteLocalAddress()) return false;
+			if (address.isLinkLocalAddress()) return false;
+
+			//問題のないURL
+			return true;
+		} catch (Exception EX) {
+			//不正なURL
+			return false;
+		}
 	}
 }
