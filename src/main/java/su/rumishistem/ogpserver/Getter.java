@@ -44,6 +44,7 @@ public class Getter {
 						LOG(LOG_TYPE.INFO, "取得:" + SANITIZE.CONSOLE_SANITIZE(url));
 
 						LinkedHashMap<String, Object> site_info = new LinkedHashMap<String, Object>();
+						site_info.put("TYPE", "WEB_SITE");
 						site_info.put("SITE_NAME", new URL(url).getHost());
 						site_info.put("TITLE", "");
 						site_info.put("DESCRIPTION", "");
@@ -56,10 +57,11 @@ public class Getter {
 
 						if (Result.getHeader("Content-Type") != null) {
 							String ContentType = Result.getHeader("Content-Type");
-							System.out.println("コンテンツタイプ：" + SANITIZE.CONSOLE_SANITIZE(ContentType));
+							LOG(LOG_TYPE.INFO, "コンテンツタイプ：" + SANITIZE.CONSOLE_SANITIZE(ContentType));
 
 							if (ContentType.startsWith("image/")) {
 								//画像単体である
+								site_info.put("TYPE", "IMAGE");
 								((ArrayList<String>)site_info.get("THUMBNAIL")).add(url);
 							} else if (ContentType.startsWith("text/html")) {
 								//HTML
@@ -89,8 +91,9 @@ public class Getter {
 							ID, url
 						});
 
-						SQL.UP_RUN("INSERT INTO `INFO` (`WEBSITE`, `SITE_NAME`, `TITLE`, `DESCRIPTION`, `COLOR`) VALUES (?, ?, ?, ?, ?)", new Object[] {
+						SQL.UP_RUN("INSERT INTO `INFO` (`WEBSITE`, `TYPE`, `SITE_NAME`, `TITLE`, `DESCRIPTION`, `COLOR`) VALUES (?, ?, ?, ?, ?, ?)", new Object[] {
 							ID,
+							site_info.get("TYPE"),
 							site_info.get("SITE_NAME"),
 							site_info.get("TITLE"),
 							site_info.get("DESCRIPTION"),
@@ -179,6 +182,7 @@ public class Getter {
 		ArrayNode Result = SQL.RUN("""
 			SELECT
 				WEBSITE.UPDATE,
+				INFO.TYPE,
 				INFO.SITE_NAME,
 				INFO.TITLE,
 				INFO.DESCRIPTION,
@@ -209,6 +213,7 @@ public class Getter {
 			ArrayNode Row = Result.get(0);
 
 			LinkedHashMap<String, Object> OGP = new LinkedHashMap<String, Object>();
+			OGP.put("TYPE", Row.getData("TYPE").asString());
 			OGP.put("SITE_NAME", Row.getData("SITE_NAME").asString());
 			OGP.put("TITLE", Row.getData("TITLE").asString());
 			OGP.put("DESCRIPTION", Row.getData("DESCRIPTION").asString());

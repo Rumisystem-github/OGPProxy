@@ -22,7 +22,7 @@ import su.rumishistem.rumi_java_lib.SmartHTTP.Type.EndpointFunction;
 import su.rumishistem.rumi_java_lib.SmartHTTP.Type.EndpointEntrie.Method;
 
 public class Main {
-	public static final String UserAgent = "RumiShistem/1.0 Bot/1.0";
+	public static final String UserAgent = "RumiShistem/1.0 OGPProxy/1.0";
 	public static ArrayNode CONFIG_DATA = null;
 
 	public static void main(String[] args) throws IOException, InterruptedException {
