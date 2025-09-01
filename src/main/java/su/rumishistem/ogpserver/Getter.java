@@ -2,9 +2,11 @@ package su.rumishistem.ogpserver;
 
 import static su.rumishistem.rumi_java_lib.LOG_PRINT.Main.LOG;
 
+import java.net.URL;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
@@ -16,6 +18,7 @@ import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import su.rumishistem.ogpserver.Type.OGP;
 import su.rumishistem.rumi_java_lib.ArrayNode;
 import su.rumishistem.rumi_java_lib.FETCH;
 import su.rumishistem.rumi_java_lib.FETCH_RESULT;
@@ -27,27 +30,27 @@ import su.rumishistem.rumi_java_lib.LOG_PRINT.LOG_TYPE;
 public class Getter {
 	private static ConcurrentHashMap<String, CompletableFuture<JsonNode>> ProgressMap = new ConcurrentHashMap<String, CompletableFuture<JsonNode>>();
 
-	public static JsonNode Get(String URL) throws InterruptedException, ExecutionException, JsonMappingException, JsonProcessingException, SQLException {
-		JsonNode Cache = getCache(URL);
+	public static JsonNode Get(String url) throws InterruptedException, ExecutionException, JsonMappingException, JsonProcessingException, SQLException {
+		JsonNode Cache = getCache(url);
 		if (Cache != null) return Cache;
 
-		CompletableFuture<JsonNode> Future = ProgressMap.computeIfAbsent(URL, Key->{
+		CompletableFuture<JsonNode> Future = ProgressMap.computeIfAbsent(url, Key->{
 			CompletableFuture<JsonNode> F = new CompletableFuture<JsonNode>();
 
 			CompletableFuture.runAsync(new Runnable() {
 				@Override
 				public void run() {
 					try {
-						LOG(LOG_TYPE.INFO, "取得:" + SANITIZE.CONSOLE_SANITIZE(URL));
+						LOG(LOG_TYPE.INFO, "取得:" + SANITIZE.CONSOLE_SANITIZE(url));
 
-						LinkedHashMap<String, Object> OGP = new LinkedHashMap<String, Object>();
-						OGP.put("OGP", false);
-						OGP.put("SITE_NAME", null);
-						OGP.put("TITLE", null);
-						OGP.put("DESCRIPTION", null);
-						OGP.put("THUMBNAIL", new ArrayList<String>());
+						LinkedHashMap<String, Object> site_info = new LinkedHashMap<String, Object>();
+						site_info.put("SITE_NAME", new URL(url).getHost());
+						site_info.put("TITLE", "");
+						site_info.put("DESCRIPTION", "");
+						site_info.put("COLOR", "FFFFFF");
+						site_info.put("THUMBNAIL", new ArrayList<String>());
 
-						FETCH Ajax = new FETCH(URL);
+						FETCH Ajax = new FETCH(url);
 						Ajax.SetHEADER("User-Agent", Main.UserAgent);
 						FETCH_RESULT Result = Ajax.GET();
 
@@ -57,40 +60,24 @@ public class Getter {
 
 							if (ContentType.startsWith("image/")) {
 								//画像単体である
-								((ArrayList<String>)OGP.get("THUMBNAIL")).add(URL);
-							} else {
-								//HTMLならOGPを読む
-								if (ContentType.startsWith("text/html")) {
-									String Body = Result.getString();
+								((ArrayList<String>)site_info.get("THUMBNAIL")).add(url);
+							} else if (ContentType.startsWith("text/html")) {
+								//HTML
+								String body = Result.getString();
 
-									Matcher MTC = Pattern.compile("<META\\s+PROPERTY=[\"']OG:([a-zA-Z0-9:_\\-]+)[\"']\\s+CONTENT=[\"'](.*?)[\"']\\s*/?>", Pattern.CASE_INSENSITIVE | Pattern.DOTALL).matcher(Body);
-									while (MTC.find()) {
-										String Key = MTC.group(1).toUpperCase();
-										String Val = MTC.group(2);
-										OGP.put("OGP", true);
+								//OGP
+								OGP ogp = parse_ogp(body);
+								if (ogp != null) {
+									site_info.put("SITE_NAME", ogp.get_site_name());
+									site_info.put("TITLE", ogp.get_title());
+									site_info.put("DESCRIPTION", ogp.get_description());
+									site_info.put("THUMBNAIL", ogp.get_image());
+								}
 
-										switch (Key) {
-											case "SITE_NAME": {
-												OGP.put("SITE_NAME", Val);
-												break;
-											}
-
-											case "TITLE": {
-												OGP.put("TITLE", Val);
-												break;
-											}
-
-											case "DESCRIPTION": {
-												OGP.put("DESCRIPTION", Val);
-												break;
-											}
-
-											case "IMAGE": {
-												((ArrayList<String>)OGP.get("THUMBNAIL")).add(Val);
-												break;
-											}
-										}
-									}
+								//テーマカラー
+								String theme_color = parse_theme_color(body);
+								if (theme_color != null) {
+									site_info.put("COLOR", theme_color);
 								}
 							}
 						}
@@ -98,20 +85,19 @@ public class Getter {
 						//キャッシュに書き込み
 						String ID = String.valueOf(SnowFlake.GEN());
 
-						SQL.UP_RUN("INSERT INTO `WEBSITE` (`ID`, `URL`, `OGP`, `UPDATE`) VALUES (?, ?, ?, NOW())", new Object[] {
-							ID, URL, (OGP.get("OGP") != null)
+						SQL.UP_RUN("INSERT INTO `WEBSITE` (`ID`, `URL`, `UPDATE`) VALUES (?, ?, NOW())", new Object[] {
+							ID, url
 						});
 
-						if ((boolean)OGP.get("OGP")) {
-							SQL.UP_RUN("INSERT INTO `OGP` (`WEBSITE`, `SITE_NAME`, `TITLE`, `DESCRIPTION`) VALUES (?, ?, ?, ?)", new Object[] {
-								ID,
-								OGP.get("SITE_NAME"),
-								OGP.get("TITLE"),
-								OGP.get("DESCRIPTION")
-							});
-						}
+						SQL.UP_RUN("INSERT INTO `INFO` (`WEBSITE`, `SITE_NAME`, `TITLE`, `DESCRIPTION`, `COLOR`) VALUES (?, ?, ?, ?, ?)", new Object[] {
+							ID,
+							site_info.get("SITE_NAME"),
+							site_info.get("TITLE"),
+							site_info.get("DESCRIPTION"),
+							site_info.get("COLOR")
+						});
 
-						for (String ImageURL:((ArrayList<String>)OGP.get("THUMBNAIL"))) {
+						for (String ImageURL:((ArrayList<String>)site_info.get("THUMBNAIL"))) {
 							SQL.UP_RUN("INSERT INTO `THUMBNAIL` (`ID`, `WEBSITE`, `URL`) VALUES (?, ?, ?)", new Object[] {
 								String.valueOf(SnowFlake.GEN()),
 								ID,
@@ -119,12 +105,12 @@ public class Getter {
 							});
 						}
 
-						F.complete(getCache(URL));
+						F.complete(getCache(url));
 					} catch (Exception EX) {
 						EX.printStackTrace();
 						F.completeExceptionally(EX);
 					} finally {
-						ProgressMap.remove(URL);
+						ProgressMap.remove(url);
 					}
 				}
 			});
@@ -135,14 +121,68 @@ public class Getter {
 		return Future.get();
 	}
 
+	private static OGP parse_ogp(String body) {
+		boolean find = false;
+		String site_name = "不明";
+		String title = "不明";
+		String description = "";
+		List<String> image = new ArrayList<>();
+
+		Matcher mtc = Pattern.compile("<META\\s+PROPERTY=[\"']OG:([a-zA-Z0-9:_\\-]+)[\"']\\s+CONTENT=[\"'](.*?)[\"']\\s*/?>", Pattern.CASE_INSENSITIVE | Pattern.DOTALL).matcher(body);
+		while (mtc.find()) {
+			String key = mtc.group(1).toUpperCase();
+			String val = mtc.group(2);
+			find = true;
+
+			switch (key) {
+				case "SITE_NAME": {
+					site_name = val;
+					break;
+				}
+
+				case "TITLE": {
+					title = val;
+					break;
+				}
+
+				case "DESCRIPTION": {
+					description = val;
+					break;
+				}
+
+				case "IMAGE": {
+					image.add(val);
+					//((ArrayList<String>)OGP.get("THUMBNAIL")).add(Val);
+					break;
+				}
+			}
+		}
+
+		if (find) {
+			return new OGP(site_name, title, description, image);
+		} else {
+			return null;
+		}
+	}
+
+	private static String parse_theme_color(String body) {
+		Matcher mtc = Pattern.compile("<META\\s+NAME=[\"']THEME-COLOR[\"']\\s+CONTENT=[\"']#([0-9A-F]+)[\"']\\s*/?>", Pattern.CASE_INSENSITIVE | Pattern.DOTALL).matcher(body);
+		if (mtc.find()) {
+			return mtc.group(1).toUpperCase();
+		} else {
+			return null;
+		}
+	}
+
+	@SuppressWarnings("unchecked")
 	private static JsonNode getCache(String URL) throws JsonMappingException, JsonProcessingException, SQLException {
 		ArrayNode Result = SQL.RUN("""
 			SELECT
 				WEBSITE.UPDATE,
-				WEBSITE.OGP,
-				OGP.SITE_NAME AS `OGP_SITE_NAME`,
-				OGP.TITLE AS `OGP_TITLE`,
-				OGP.DESCRIPTION AS `OGP_DESCRIPTION`,
+				INFO.SITE_NAME,
+				INFO.TITLE,
+				INFO.DESCRIPTION,
+				INFO.COLOR,
 				(
 					SELECT
 						JSON_ARRAYAGG(`URL`)
@@ -154,8 +194,8 @@ public class Getter {
 			FROM
 				`WEBSITE` AS WEBSITE
 			LEFT JOIN
-				`OGP` AS OGP
-				ON OGP.WEBSITE = WEBSITE.ID
+				`INFO` AS INFO
+				ON INFO.WEBSITE = WEBSITE.ID
 			LEFT JOIN
 				`THUMBNAIL` AS THUMBNAIL
 				ON THUMBNAIL.WEBSITE = WEBSITE.ID
@@ -169,17 +209,11 @@ public class Getter {
 			ArrayNode Row = Result.get(0);
 
 			LinkedHashMap<String, Object> OGP = new LinkedHashMap<String, Object>();
-			OGP.put("OGP", Row.getData("OGP").asBool());
-			OGP.put("SITE_NAME", null);
-			OGP.put("TITLE", null);
-			OGP.put("DESCRIPTION", null);
+			OGP.put("SITE_NAME", Row.getData("SITE_NAME").asString());
+			OGP.put("TITLE", Row.getData("TITLE").asString());
+			OGP.put("DESCRIPTION", Row.getData("DESCRIPTION").asString());
 			OGP.put("THUMBNAIL", new ArrayList<String>());
-
-			if (Row.getData("OGP").asBool()) {
-				OGP.put("SITE_NAME", Row.getData("OGP_SITE_NAME").asString());
-				OGP.put("TITLE", Row.getData("OGP_TITLE").asString());
-				OGP.put("DESCRIPTION", Row.getData("OGP_DESCRIPTION").asString());
-			}
+			OGP.put("COLOR", Row.getData("COLOR").asString());
 
 			JsonNode Thumbnail = new ObjectMapper().readTree(Row.getData("THUMBNAIL").asString());
 			for (int I = 0; I < Thumbnail.size(); I++) {

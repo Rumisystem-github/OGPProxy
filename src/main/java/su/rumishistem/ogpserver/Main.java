@@ -4,24 +4,15 @@ import static su.rumishistem.rumi_java_lib.LOG_PRINT.Main.LOG;
 
 import java.io.File;
 import java.io.IOException;
-import java.net.InetAddress;
 import java.net.URL;
 import java.net.URLDecoder;
-import java.net.UnknownHostException;
-import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import su.rumishistem.rumi_java_lib.ArrayNode;
 import su.rumishistem.rumi_java_lib.CONFIG;
-import su.rumishistem.rumi_java_lib.FETCH;
-import su.rumishistem.rumi_java_lib.FETCH_RESULT;
-import su.rumishistem.rumi_java_lib.SANITIZE;
 import su.rumishistem.rumi_java_lib.SQL;
 import su.rumishistem.rumi_java_lib.LOG_PRINT.LOG_TYPE;
 import su.rumishistem.rumi_java_lib.SmartHTTP.HTTP_REQUEST;
@@ -60,7 +51,7 @@ public class Main {
 			@Override
 			public HTTP_RESULT Run(HTTP_REQUEST r) throws Exception {
 				if (r.GetEVENT().getURI_PARAM().get("URL") == null) {
-					return new HTTP_RESULT(400, "{\"STATUS\": false}".getBytes(), "application/json; charset=UTF-8");
+					return new HTTP_RESULT(400, "{\"STATUS\": false, \"ERR\":\"URL\"}".getBytes(), "application/json; charset=UTF-8");
 				}
 
 				try {
@@ -73,11 +64,11 @@ public class Main {
 						Return.put("DATA", Data);
 						return new HTTP_RESULT(200, new ObjectMapper().writeValueAsString(Return).getBytes(), "application/json; charset=UTF-8");
 					} else {
-						return new HTTP_RESULT(400, "{\"STATUS\": false}".getBytes(), "application/json; charset=UTF-8");
+						return new HTTP_RESULT(400, "{\"STATUS\": false, \"ERR\":\"BAD_URL\"}".getBytes(), "application/json; charset=UTF-8");
 					}
 				} catch (Exception EX) {
 					EX.printStackTrace();
-					return new HTTP_RESULT(500, "{\"STATUS\": false}".getBytes(), "application/json; charset=UTF-8");
+					return new HTTP_RESULT(500, "{\"STATUS\": false, \"ERR\":\"SYSTEM_ERR\"}".getBytes(), "application/json; charset=UTF-8");
 				}
 			}
 		});
@@ -93,11 +84,11 @@ public class Main {
 			if (host.equalsIgnoreCase("localhost")) return false;
 
 			//宛先がプライベートIP→ダメ
-			InetAddress address = InetAddress.getByName(host);
+			/*InetAddress address = InetAddress.getByName(host);
 			if (address.isAnyLocalAddress()) return false;
 			if (address.isLoopbackAddress()) return false;
 			if (address.isSiteLocalAddress()) return false;
-			if (address.isLinkLocalAddress()) return false;
+			if (address.isLinkLocalAddress()) return false;*/
 
 			//問題のないURL
 			return true;
